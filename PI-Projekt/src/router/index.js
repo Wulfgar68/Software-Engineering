@@ -1,25 +1,33 @@
-import { createRouter, createWebHistory } from 'vue-router';
-
-
-// importirane komponente za rute
-import Login from '../components/Auth/Login.vue';
-import Register from '../components/Auth/Register.vue';
-import Marketplace from '../components/Marketplace.vue';
-import Profile from '../components/Auth/Profile.vue';
-import BookDetails from '../components/Knjige/BookDetails.vue';
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth.js'
 
 const routes = [
   { path: '/', redirect: '/marketplace' },
-  { path: '/login', component: Login },
-  { path: '/register', component: Register },
-  { path: '/marketplace', component: Marketplace },
-  { path: '/profile', component: Profile },
-  { path: '/book/:id', component: BookDetails, props: true },
-];
+  { path: '/login', component: () => import ('@/components/Auth/Login.vue') },
+  { path: '/register', component: () => import('@/components/Auth/Register.vue') },
+  { path: '/marketplace', component: () => import('@/components/Marketplace.vue') },
+  { path: '/book/:id', component: () => import('@/components/Knjige/BookDetails.vue'), props: true},
+  { path: '/favorites', component: () => import('@/components/Knjige/Favoriti.vue'), meta: { requiresAuth: true } },
+  { path: '/:pathMatch(.*)*', redirect: '/'},
+  { path: '/profile', component: () => import('@/components/Auth/Profile.vue'), meta: { requiresAuth: true }},
+  { path: '/dodaj_knjigu',component: () => import('@/components/Knjige/BookForm.vue'), meta: { requiresAuth: true }},
+  {path: '/chats',component: () => import('@/components/Chat/ChatList.vue'), meta: { requiresAuth: true }},
+  {path: '/chat/:id',component: () => import('@/components/Chat/ChatRoom.vue'), props: true, meta: { requiresAuth: true }}
+]
 
 const router = createRouter({
   history: createWebHistory(),
   routes
-});
+})
 
-export default router;
+// Globalni "beforeEach" guard za provjeru autentificiranosti
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore()
+  if (to.meta.requiresAuth && !authStore.user) {
+    next('/login')    // ako ruta traži prijavu, a korisnik nije logiran, preusmjeri na /login
+  } else {
+    next()
+  }
+})
+
+export default router

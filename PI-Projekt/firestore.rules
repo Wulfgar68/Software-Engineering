@@ -1,0 +1,94 @@
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed() { return request.auth != null; }
+    function isOwner()  { return isAuthed() && resource != null && resource.data.userId == request.auth.uid; }
+
+    // Je li trenutni korisnik vlasnik dane knjige (za favorites cleanup)?
+    function isBookOwner(bookId) {
+      return isAuthed() &&
+        get(/databases/$(database)/documents/books/$(bookId)).data.userId == request.auth.uid;
+    }
+
+    // ---------------- BOOKS ----------------
+    match /books/{bookId} {
+      allow read: if true;
+
+      allow create: if isAuthed()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+           ['title','author','faculty','course','description',
+            'price','condition','status','city','tags','images',
+            'userId','createdAt'])
+        && request.resource.data.title is string
+        && request.resource.data.author is string
+        && request.resource.data.status in ['available','reserved','sold','lent'];
+
+      allow update, delete: if isOwner();
+    }
+
+    // ---------------- USERS ----------------
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update, delete: if isAuthed() && uid == request.auth.uid;
+    }
+
+    // ---------------- FAVORITES ----------------
+    match /favorites/{favId} {
+      // READ:
+      // 1) doc postoji i pripada meni
+      // 2) doc NE postoji, ali ID počinje s mojim uid-om (npr. "<uid>_<bookId>") -> onSnapshot nepostojećeg doca
+      allow read: if isAuthed() && (
+        (resource != null && resource.data.userId == request.auth.uid) ||
+        (resource == null && favId.matches('^' + request.auth.uid + '_.*'))
+      );
+
+      // CREATE: točno ova polja, i userId mora biti moj
+      allow create: if isAuthed()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId','bookId','createdAt']);
+
+      // DELETE: vlasnik favorita ILI vlasnik knjige (cleanup kad se briše knjiga)
+      allow delete: if isAuthed() && resource != null && (
+        resource.data.userId == request.auth.uid ||
+        isBookOwner(resource.data.bookId)
+      );
+    }
+
+    // ---------------- CHATS ----------------
+    match /chats/{chatId} {
+      // čitati smiju samo sudionici
+      allow read: if isAuthed() && (
+
+        resource == null ||
+
+        request.auth.uid in resource.data.participants
+
+      );
+
+
+      // kreirati smije korisnik koji JE u participants; polja moraju biti točno ova
+      allow create: if isAuthed()
+        && request.resource.data.keys().hasOnly(['participants','lastMessage','updatedAt'])
+        && request.auth.uid in request.resource.data.participants;
+
+      // update smiju samo sudionici (npr. ažuriranje lastMessage/updatedAt)
+      allow update: if isAuthed()
+        && resource != null
+        && request.auth.uid in resource.data.participants;
+
+      allow delete: if false;
+    }
+
+    // poruke su u subkolekciji chats/{chatId}/messages
+    match /chats/{chatId}/messages/{msgId} {
+      // čitati/slati poruke smiju samo sudionici roditeljskog chata
+      allow read, create: if isAuthed()
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+
+      allow delete: if false;
+    }
+  }
+}
