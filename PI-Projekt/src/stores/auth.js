@@ -40,8 +40,10 @@ export const useAuthStore = defineStore('auth', () => {
       firstName: (firstName || '').trim(),
       lastName : (lastName  || '').trim(),
       fullName : `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim(),
+      displayNameLower: `${firstName} ${lastName}`.toLowerCase().trim(),
       email    : cred.user.email,
-      username : null, // kasnije korisnik može postaviti
+      username : null,
+      isPremium: false,
       createdAt: serverTimestamp(),
     })
 

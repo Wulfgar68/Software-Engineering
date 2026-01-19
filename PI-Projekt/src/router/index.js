@@ -8,11 +8,13 @@ const routes = [
   { path: '/marketplace', component: () => import('@/components/Marketplace.vue') },
   { path: '/book/:id', component: () => import('@/components/Knjige/BookDetails.vue'), props: true},
   { path: '/favorites', component: () => import('@/components/Knjige/Favoriti.vue'), meta: { requiresAuth: true } },
-  { path: '/:pathMatch(.*)*', redirect: '/'},
   { path: '/profile', component: () => import('@/components/Auth/Profile.vue'), meta: { requiresAuth: true }},
   { path: '/dodaj_knjigu',component: () => import('@/components/Knjige/BookForm.vue'), meta: { requiresAuth: true }},
   {path: '/chats',component: () => import('@/components/Chat/ChatList.vue'), meta: { requiresAuth: true }},
-  {path: '/chat/:id',component: () => import('@/components/Chat/ChatRoom.vue'), props: true, meta: { requiresAuth: true }}
+  {path: '/chat/:id',component: () => import('@/components/Chat/ChatRoom.vue'), props: true, meta: { requiresAuth: true }},
+  {path: '/users',component: () => import('@/components/Users.vue'), props: true},
+  { path: '/users/:uid', component: () => import('@/components/UserProfile.vue'), props: true },
+  {path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 
 const router = createRouter({

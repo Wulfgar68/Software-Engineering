@@ -3,7 +3,6 @@
     <h2 class="text-2xl font-semibold">Dodaj novu knjigu</h2>
 
     <form @submit.prevent="addBook" class="space-y-4">
-      <!-- osnovno -->
       <div>
         <label class="block text-sm text-gray-600 mb-1">Naslov *</label>
         <input v-model.trim="title" type="text" required class="w-full border rounded-lg px-3 py-2" />
@@ -24,7 +23,6 @@
         />
       </div>
 
-      <!-- filter polja (typeahead) -->
       <div class="grid gap-3 sm:grid-cols-2">
         <Typeahead v-model="faculty" :options="faculties" label="Fakultet" placeholder="npr. Pravni" />
         <Typeahead v-model="course"  :options="coursesFilteredByFaculty" label="Kolegij" placeholder="npr. Kazneno pravo" />
@@ -35,7 +33,6 @@
         </div>
       </div>
 
-      <!-- tagovi -->
       <div>
         <label class="block text-sm text-gray-600 mb-1">Tagovi (zarezom odvojeni)</label>
         <input
@@ -44,7 +41,6 @@
           placeholder="npr. skripta, obavezna literatura"
           class="w-full border rounded-lg px-3 py-2"
         />
-        <!-- prijedlozi tagova -->
         <div v-if="tagSuggestions.length" class="mt-2 flex flex-wrap gap-2">
           <button
             v-for="t in tagSuggestions"
@@ -56,6 +52,26 @@
             + {{ t }}
           </button>
         </div>
+      </div>
+
+      <div class="border rounded-xl p-4 bg-gray-50">
+        <div class="text-sm font-medium text-gray-700 mb-2">Način kupnje</div>
+
+        <div class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" v-model="methodPickup" class="accent-black" />
+            Uživo (preuzimanje)
+          </label>
+
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" v-model="methodOnline" class="accent-black" />
+            Online plaćanje
+          </label>
+        </div>
+
+        <p v-if="methodError" class="text-sm text-red-600 mt-2">
+          {{ methodError }}
+        </p>
       </div>
 
       <div class="flex items-center gap-3">
@@ -78,36 +94,35 @@ import Typeahead from '@/components/Knjige/Typeahead.vue'
 
 const auth = useAuthStore()
 
-// polja forme
 const title = ref('')
 const author = ref('')
 const description = ref('')
 const faculty = ref('')
 const course = ref('')
 const city = ref('')
-const price = ref() // number | undefined
-const tagsInput = ref('') // "skripta, obavezna"
+const price = ref()
+const tagsInput = ref('')
+
+const methodPickup = ref(true)
+const methodOnline = ref(false)
+const methodError = ref('')
 
 const saving = ref(false)
 const error = ref('')
 const success = ref('')
 
-// opcije za typeahead (popunjavamo iz postojećih knjiga)
 const faculties = ref([])
 const courses = ref([])
 const cities = ref([])
 const allTags = ref([])
 
-// ovisni popis kolegija (ako odabran fakultet, nudimo kolegije tog faksa; u suprotnom sve)
+const courseToFaculty = new Map()
+
 const coursesFilteredByFaculty = computed(() => {
   if (!faculty.value) return courses.value
   return courses.value.filter(c => !!c && courseToFaculty.get(c) === faculty.value)
 })
 
-// map kolegij -> fakultet (da bi filter radio)
-const courseToFaculty = new Map()
-
-// Učitaj postojeće vrijednosti za prijedloge (bez dodatnih indeksa)
 onMounted(async () => {
   try {
     const qAvail = query(
@@ -138,7 +153,6 @@ onMounted(async () => {
   }
 })
 
-// prijedlozi tagova za zadnju riječ u inputu
 const tagSuggestions = computed(() => {
   const parts = tagsInput.value.split(',').map(s => s.trim()).filter(Boolean)
   const current = parts[parts.length - 1] || ''
@@ -161,8 +175,8 @@ const parseTags = () => {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
-    .map(s => s.length > 40 ? s.slice(0, 40) : s) // malo ograničenje
-  // ukloni duplikate (case-insensitive)
+    .map(s => s.length > 40 ? s.slice(0, 40) : s)
+
   const seen = new Set()
   return arr.filter(t => {
     const k = t.toLowerCase()
@@ -175,6 +189,13 @@ const parseTags = () => {
 const addBook = async () => {
   error.value = ''
   success.value = ''
+  methodError.value = ''
+
+  if (!methodPickup.value && !methodOnline.value) {
+    methodError.value = 'Odaberi barem jedan način kupnje.'
+    return
+  }
+
   if (!title.value || !author.value) {
     error.value = 'Molimo ispunite naslov i autora.'
     return
@@ -197,15 +218,14 @@ const addBook = async () => {
       tags: parseTags(),
       userId: auth.user.uid,
       status: 'available',
+      purchaseMethods: { pickup: !!methodPickup.value, online: !!methodOnline.value },
       createdAt: serverTimestamp(),
     }
 
-    // Makni null polja zbog rules.hasOnly (nije obavezno, ali čišće)
     Object.keys(docData).forEach(k => docData[k] === null && delete docData[k])
 
     await addDoc(collection(db, 'books'), docData)
 
-    // reset
     title.value = ''
     author.value = ''
     description.value = ''
@@ -214,6 +234,9 @@ const addBook = async () => {
     city.value = ''
     price.value = undefined
     tagsInput.value = ''
+    methodPickup.value = true
+    methodOnline.value = false
+    methodError.value = ''
     success.value = 'Knjiga je dodana.'
   } catch (e) {
     console.error(e)
