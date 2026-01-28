@@ -93,6 +93,17 @@
             </button>
           </div>
 
+          <div class="mt-3">
+            <button
+              v-if="auth.user?.uid"
+              :disabled="contacting || !canContact"
+              @click="contactOwner"
+              class="px-3 py-2 rounded border text-sm hover:bg-gray-100 disabled:opacity-50"
+            >
+              {{ contacting ? 'Otvaram…' : 'Kontaktiraj vlasnika' }}
+            </button>
+          </div>
+
           <p v-if="actionError" class="text-red-600 text-sm mt-2">{{ actionError }}</p>
           <p v-if="actionOk" class="text-green-600 text-sm mt-2">{{ actionOk }}</p>
         </div>
@@ -125,6 +136,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.js'
 import FavoritiButton from '@/components/Knjige/FavoritiButton.vue'
+import { startOrGetChat, sendSystemMessage } from '@/utils/ChatStart.js'
 import { db } from '@/firebase.js'
 import {
   doc, onSnapshot, updateDoc, deleteDoc, getDoc,
@@ -146,6 +158,7 @@ const actionError = ref('')
 const actionOk = ref('')
 const buying = ref(false)
 const reserving = ref(false)
+const contacting = ref(false)
 
 const statusOptions = [
   { code: 'available', label: 'Dostupna' },
@@ -172,6 +185,10 @@ const canOnline = computed(() => !!methods.value.online)
 
 const canAct = computed(() => {
   return !!auth.user?.uid && (book.value?.status === 'available' || !book.value?.status)
+})
+
+const canContact = computed(() => {
+  return !!auth.user?.uid && !!book.value?.userId && !isOwner.value
 })
 
 const ownerName = ref('Učitavam…')
@@ -207,24 +224,49 @@ onMounted(() => {
 })
 onBeforeUnmount(() => { unsub && unsub() })
 
+const contactOwner = async () => {
+  actionError.value = ''
+  actionOk.value = ''
+  if (!auth.user?.uid) { actionError.value = 'Moraš biti prijavljen.'; return }
+  if (!book.value?.userId) { actionError.value = 'Nedostaje vlasnik.'; return }
+  if (isOwner.value) { actionError.value = 'Ovo je tvoja knjiga.'; return }
+
+  contacting.value = true
+  try {
+    const id = await startOrGetChat(auth.user.uid, book.value.userId)
+    router.push(`/chat/${id}`)
+  } catch (e) {
+    console.error(e)
+    actionError.value = e?.message || 'Greška pri otvaranju chata.'
+  } finally {
+    contacting.value = false
+  }
+}
+
 const reservePickup = async () => {
   actionError.value = ''
   actionOk.value = ''
 
   if (!auth.user?.uid) { actionError.value = 'Moraš biti prijavljen.'; return }
   if (!book.value?.id) { actionError.value = 'Nedostaje ID knjige.'; return }
+  if (!book.value?.userId) { actionError.value = 'Nedostaje vlasnik.'; return }
   if (isOwner.value) { actionError.value = 'Ne možeš rezervirati vlastitu knjigu.'; return }
   if (book.value.status && book.value.status !== 'available') { actionError.value = 'Knjiga nije dostupna.'; return }
   if (!canPickup.value) { actionError.value = 'Uživo kupnja nije omogućena.'; return }
 
   reserving.value = true
   try {
-    await updateDoc(doc(db, 'books', book.value.id), {
-      status: 'reserved',
-      reservedBy: auth.user.uid,
-      reservedAt: serverTimestamp(),
-    })
-    actionOk.value = 'Rezervirano. Kontaktiraj vlasnika u chatu za preuzimanje.'
+    actionOk.value = 'Otvaram chat s vlasnikom…'
+
+    const id = await startOrGetChat(auth.user.uid, book.value.userId)
+
+    await sendSystemMessage(
+      id,
+      auth.user.uid,
+      `Bok! Želio bih rezervirati knjigu "${book.value.title}" za uživo preuzimanje. Možemo se dogovoriti?`
+    )
+
+    router.push(`/chat/${id}`)
   } catch (e) {
     console.error(e)
     actionError.value = e?.message || 'Greška pri rezervaciji.'
@@ -233,23 +275,39 @@ const reservePickup = async () => {
   }
 }
 
+
 const buyOnline = async () => {
   actionError.value = ''
   actionOk.value = ''
 
   if (!auth.user?.uid) { actionError.value = 'Moraš biti prijavljen.'; return }
   if (!book.value?.id) { actionError.value = 'Nedostaje ID knjige.'; return }
+  if (!book.value?.userId) { actionError.value = 'Nedostaje vlasnik.'; return }
   if (isOwner.value) { actionError.value = 'Ne možeš kupiti vlastitu knjigu.'; return }
   if (book.value.status && book.value.status !== 'available') { actionError.value = 'Knjiga nije dostupna.'; return }
   if (!canOnline.value) { actionError.value = 'Online plaćanje nije omogućeno.'; return }
 
   buying.value = true
   try {
-    actionError.value = 'Online plaćanje još nije spojeno (Stripe dolazi uskoro).'
+    actionOk.value = 'Otvaram chat s vlasnikom…'
+
+    const id = await startOrGetChat(auth.user.uid, book.value.userId)
+
+    await sendSystemMessage(
+      id,
+      auth.user.uid,
+      `Bok! Zanima me kupnja knjige „${book.value.title}“ online. Trenutno online kupnja nije dostupna, ali možemo se dogovoriti ovdje.`
+    )
+
+    router.push(`/chat/${id}`)
+  } catch (e) {
+    console.error(e)
+    actionError.value = e?.message || 'Greška pri otvaranju chata.'
   } finally {
     buying.value = false
   }
 }
+
 
 const changeStatus = async () => {
   errorMsg.value = ''; okMsg.value = ''

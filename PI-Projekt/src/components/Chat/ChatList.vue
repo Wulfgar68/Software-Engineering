@@ -22,7 +22,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onBeforeUnmount, computed, watch } from 'vue'
 import { db } from '@/firebase.js'
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth.js'
@@ -35,22 +35,28 @@ const chats = ref([])
 const loading = ref(true)
 let unsub = null
 
-onMounted(() => {
+const start = () => {
+  if (unsub) { unsub(); unsub = null }
+  chats.value = []
+  loading.value = true
+
   if (!uid.value) { loading.value = false; return }
+
   const q = query(
     collection(db, 'chats'),
     where('participants', 'array-contains', uid.value),
     orderBy('updatedAt', 'desc')
   )
+
   unsub = onSnapshot(q, (snap) => {
     chats.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     loading.value = false
   }, () => { loading.value = false })
-})
+}
 
+watch(uid, () => start(), { immediate: true })
 onBeforeUnmount(() => unsub && unsub())
 
-// Jednostavan naslov: "Razgovor s korisnikom <drugi UID>" (možeš poboljšati dohvatom imena)
 const chatTitle = (c) => {
   const others = (c.participants || []).filter(p => p !== uid.value)
   return `Razgovor s korisnikom ${others[0] || ''}`

@@ -12,22 +12,39 @@ service cloud.firestore {
         get(/databases/$(database)/documents/books/$(bookId)).data.userId == request.auth.uid;
     }
 
-    // ---------------- BOOKS ----------------
-    match /books/{bookId} {
-      allow read: if true;
+// ---------------- BOOKS ----------------
+match /books/{bookId} {
+  allow read: if true;
 
-      allow create: if isAuthed()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.keys().hasOnly(
-           ['title','author','faculty','course','description',
-            'price','condition','status','city','tags','images',
-            'userId','createdAt'])
-        && request.resource.data.title is string
-        && request.resource.data.author is string
-        && request.resource.data.status in ['available','reserved','sold','lent'];
+  allow create: if isAuthed()
+    && request.resource.data.userId == request.auth.uid
+    && request.resource.data.keys().hasOnly(
+       ['title','author','faculty','course','description',
+        'price','condition','status','city','tags','images',
+        'purchaseMethods',
+        'userId','createdAt'])
+    && request.resource.data.title is string
+    && request.resource.data.author is string
+    && request.resource.data.status in ['available','reserved','sold','lent']
+    && request.resource.data.purchaseMethods is map
+    && request.resource.data.purchaseMethods.keys().hasOnly(['pickup','online'])
+    && request.resource.data.purchaseMethods.pickup is bool
+    && request.resource.data.purchaseMethods.online is bool;
 
-      allow update, delete: if isOwner();
-    }
+  allow update: if isOwner() || (
+    isAuthed()
+    && resourse != null
+    && resourse.data.userId != request.auth.uid
+    && resourse.data.status == 'availible'
+    && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'reservedBy', 'reservedAt'])
+    && request.resource.data.status == 'reserved'
+    && request.resource.data.reservedBy == request.auth.uid
+    && request.resource.data.reservedAt == request.time
+    );
+  allow delete: if isOwner();
+
+}
+
 
     // ---------------- USERS ----------------
     match /users/{uid} {
@@ -35,27 +52,51 @@ service cloud.firestore {
       allow create, update, delete: if isAuthed() && uid == request.auth.uid;
     }
 
+    // ---------------- USERNAMES ----------------
+match /usernames/{uname} {
+  allow read: if true;
+
+  allow create: if isAuthed()
+    && request.resource.data.keys().hasOnly(['uid','userId','createdAt'])
+    && (
+      (request.resource.data.uid == request.auth.uid) ||
+      (request.resource.data.userId == request.auth.uid)
+    );
+
+  allow delete: if isAuthed()
+    && resource != null
+    && (
+      (resource.data.uid == request.auth.uid) ||
+      (resource.data.userId == request.auth.uid)
+    );
+
+  allow update: if false;
+}
+
+
+
     // ---------------- FAVORITES ----------------
-    match /favorites/{favId} {
-      // READ:
-      // 1) doc postoji i pripada meni
-      // 2) doc NE postoji, ali ID počinje s mojim uid-om (npr. "<uid>_<bookId>") -> onSnapshot nepostojećeg doca
-      allow read: if isAuthed() && (
-        (resource != null && resource.data.userId == request.auth.uid) ||
-        (resource == null && favId.matches('^' + request.auth.uid + '_.*'))
-      );
+match /favorites/{favId} {
+  // READ:
+  // 1) doc postoji i pripada meni
+  // 2) doc postoji i ja sam vlasnik knjige na koju favorite pokazuje (cleanup kad brišem knjigu)
+  // 3) doc ne postoji, ali ID počinje s mojim uid-om (onSnapshot nepostojećeg doca)
+  allow read: if isAuthed() && (
+    (resource != null && resource.data.userId == request.auth.uid) ||
+    (resource != null && isBookOwner(resource.data.bookId)) ||
+    (resource == null && favId.matches('^' + request.auth.uid + '_.*'))
+  );
 
-      // CREATE: točno ova polja, i userId mora biti moj
-      allow create: if isAuthed()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.keys().hasOnly(['userId','bookId','createdAt']);
+  allow create: if isAuthed()
+    && request.resource.data.userId == request.auth.uid
+    && request.resource.data.keys().hasOnly(['userId','bookId','createdAt']);
 
-      // DELETE: vlasnik favorita ILI vlasnik knjige (cleanup kad se briše knjiga)
-      allow delete: if isAuthed() && resource != null && (
-        resource.data.userId == request.auth.uid ||
-        isBookOwner(resource.data.bookId)
-      );
-    }
+  allow delete: if isAuthed() && resource != null && (
+    resource.data.userId == request.auth.uid ||
+    isBookOwner(resource.data.bookId)
+  );
+}
+
 
     // ---------------- CHATS ----------------
     match /chats/{chatId} {

@@ -33,7 +33,7 @@
           <RouterLink
             v-for="u in filtered"
             :key="u.id"
-            :to="`/users/${u.id}`"
+            :to="`/user/${u.id}`"
             class="group border rounded-2xl bg-white p-4 shadow-sm hover:shadow-md transition"
           >
             <div class="flex items-center gap-3">
@@ -62,6 +62,9 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink } from 'vue-router'
 import { db } from '@/firebase.js'
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
+import { useAuthStore } from '@/stores/auth.js'
+
+const authStore = useAuthStore()
 
 const q = ref('')
 const loading = ref(true)
@@ -117,9 +120,13 @@ const initials = (u) => {
 
 const filtered = computed(() => {
   const needle = norm(q.value)
-  if (!needle) return users.value
+  const me = authStore.user?.uid
 
-  return users.value.filter(u => {
+  const base = users.value.filter(u => u.id !== me)
+
+  if (!needle) return base
+
+  return base.filter(u => {
     const hay = [
       u.fullName,
       u.username,

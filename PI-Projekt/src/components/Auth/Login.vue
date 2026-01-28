@@ -2,7 +2,7 @@
   <div class="max-w-md mx-auto p-6">
     <h1 class="text-2xl font-semibold mb-4">Prijava</h1>
 
-    <form @submit.prevent="onSubmit" class="space-y-3">
+    <form @submit.prevent="onSubmit" class="space-y-3"> 
       <input v-model.trim="email" type="email" placeholder="Email"
              class="w-full border rounded px-3 py-2" required />
       <input v-model.trim="password" type="password" placeholder="Lozinka"
